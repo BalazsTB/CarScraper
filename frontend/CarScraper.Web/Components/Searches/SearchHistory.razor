@@ -1,0 +1,124 @@
+@implements IAsyncDisposable
+@inject CarScraper.Web.Data.ISearchRepository Repository
+@inject CarScraper.Web.Services.SearchQueue Queue
+@inject ILogger<SearchHistory> Logger
+
+<div class="section-heading"><h2>Your searches</h2><button class="secondary" @onclick="Refresh">Refresh</button></div>
+@if (_error is not null) { <p class="error" role="alert">@_error</p> }
+@if (_searches.Count == 0)
+{
+    <div class="empty"><h3>Your first search starts here</h3><p>Save a search to start collecting listings.</p></div>
+}
+else
+{
+    <label>Saved search
+        <select value="@_selectedId" @onchange="SelectionChanged">
+            @foreach (var search in _searches)
+            {
+                <option value="@search.Id">#@search.Id · @search.Description · @search.Definition.Postcode · @search.Status</option>
+            }
+        </select>
+    </label>
+    @if (_selected is not null)
+    {
+        <div class="search-summary">
+            <div><span class="badge @_selected.Status">@_selected.Status</span><h3>@_selected.Description</h3>
+            <p class="muted">@_selected.Definition.Postcode · @(_selected.Definition.Radius?.ToString() ?? "Any") miles · @(_selected.Definition.YearFrom?.ToString() ?? "Any")–@(_selected.Definition.YearTo?.ToString() ?? "Any")</p></div>
+            <button disabled="@(!_selected.CanStart)" @onclick="StartSearch">@(_selected.Status == "draft" ? "Search" : "Search again")</button>
+        </div>
+        <details><summary>Saved criteria</summary>
+            <p>Price: @Money(_selected.Definition.PriceFrom) to @Money(_selected.Definition.PriceTo)</p>
+            <p>Up to @_selected.Definition.MaxPages pages per make/model · @_selected.Definition.DelaySeconds seconds between pages</p>
+            <p class="small muted">Created: @Timestamp(_selected.CreatedAt) · Started: @Timestamp(_selected.StartedAt) · Finished: @Timestamp(_selected.CompletedAt)</p>
+        </details>
+        <p role="status">@_selected.ProgressMessage <strong>@_selected.ResultCount listings</strong></p>
+        @if (_selected.IsActive) { <p class="muted small">Updates automatically every two seconds. You can leave this page and return later.</p> }
+        @if (_selected.Status == "failed") { <p class="error" role="alert">@_selected.ErrorMessage</p><p class="muted">Any results shown are partial. Search again to retry.</p> }
+        <ResultTable Listings="_results" IsActive="_selected.IsActive" />
+    }
+}
+
+@code {
+    private List<SearchRecord> _searches = [];
+    private List<Listing> _results = [];
+    private SearchRecord? _selected;
+    private long? _selectedId;
+    private string? _error;
+    private readonly CancellationTokenSource _cancellation = new();
+    private Task? _polling;
+
+    protected override void OnInitialized() => Refresh();
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) _polling = PollAsync(_cancellation.Token);
+        return Task.CompletedTask;
+    }
+
+    public Task SelectAsync(long searchId)
+    {
+        _selectedId = searchId;
+        Refresh();
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private void SelectionChanged(ChangeEventArgs args)
+    {
+        if (long.TryParse(args.Value?.ToString(), out var searchId)) _selectedId = searchId;
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        try
+        {
+            _searches = Repository.GetAll();
+            _selectedId ??= _searches.FirstOrDefault()?.Id;
+            _selected = _searches.FirstOrDefault(search => search.Id == _selectedId);
+            _results = _selected is null ? [] : Repository.GetResults(_selected.Id);
+            _error = null;
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException exception)
+        {
+            Logger.LogError(exception, "Could not refresh search history");
+            _error = "Could not read search history. Try Refresh in a moment.";
+        }
+    }
+
+    private void StartSearch()
+    {
+        if (_selected is null) return;
+        try
+        {
+            if (!Queue.Start(_selected.Id)) _error = "This search is already queued or running.";
+            else Refresh();
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException exception)
+        {
+            Logger.LogError(exception, "Could not queue search");
+            _error = "Could not start the search. Try again in a moment.";
+        }
+    }
+
+    private async Task PollAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+                await InvokeAsync(() => { Refresh(); StateHasChanged(); });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    private static string Money(int? value) => value?.ToString("C0", System.Globalization.CultureInfo.GetCultureInfo("en-GB")) ?? "Any";
+    private static string Timestamp(string value) => string.IsNullOrEmpty(value) ? "—" : DateTimeOffset.Parse(value).ToLocalTime().ToString("g");
+
+    public async ValueTask DisposeAsync()
+    {
+        await _cancellation.CancelAsync();
+        if (_polling is not null) await _polling;
+        _cancellation.Dispose();
+    }
+}

@@ -1,0 +1,91 @@
+@inject CarScraper.Web.Data.ISearchRepository Repository
+
+<h2>Create a search</h2>
+<p class="muted">Save the criteria first. Start the search when you are ready.</p>
+<EditForm Model="_definition" OnValidSubmit="SaveAsync" FormName="new-search">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+    <div class="form-grid">
+        <label>Postcode<InputText @bind-Value="_definition.Postcode" /></label>
+        <label>Radius (miles)<InputNumber @bind-Value="_definition.Radius" /></label>
+        <label>Minimum price (£)<InputNumber @bind-Value="_definition.PriceFrom" /></label>
+        <label>Maximum price (£)<InputNumber @bind-Value="_definition.PriceTo" /></label>
+    </div>
+    <label class="checkbox"><InputCheckbox @bind-Value="_isAnyAge" @bind-Value:after="UpdateYearFilter" /> Any age</label>
+    @if (!_isAnyAge)
+    {
+        <div class="form-grid">
+            <label>Earliest year<InputNumber @bind-Value="_definition.YearFrom" /></label>
+            <label>Latest year<InputNumber @bind-Value="_definition.YearTo" /></label>
+        </div>
+    }
+    <p class="muted small">Leave an optional limit blank to search without that filter.</p>
+    <h3>Makes and models</h3>
+    @foreach (var car in _definition.Cars)
+    {
+        <div class="car-row" @key="car">
+            <label>Make<InputText @bind-Value="car.Make" /></label>
+            <label>Model<InputText @bind-Value="car.Model" /></label>
+            <button type="button" class="secondary remove" @onclick="() => _definition.Cars.Remove(car)" aria-label="Remove car">Remove</button>
+        </div>
+    }
+    <button type="button" class="secondary" @onclick="() => _definition.Cars.Add(new())">+ Add a car</button>
+    <details>
+        <summary>Search options</summary>
+        <div class="form-grid">
+            <label>Pages per make/model<InputNumber @bind-Value="_definition.MaxPages" /></label>
+            <label>Delay between pages (seconds)<InputNumber @bind-Value="_definition.DelaySeconds" /></label>
+        </div>
+        <label class="checkbox"><InputCheckbox @bind-Value="_definition.IsHeadless" /> Run Chrome in the background</label>
+        <p class="muted small">Leave unchecked to handle cookie consent in Chrome.</p>
+    </details>
+    <button type="submit" disabled="@(_isSaving || !RendererInfo.IsInteractive)">Save search</button>
+</EditForm>
+@if (_savedId is not null)
+{
+    <p class="success" role="status">Search #@_savedId saved. Select Search in your history to start it.</p>
+}
+@if (_error is not null) { <p class="error" role="alert">@_error</p> }
+
+@code {
+    [Parameter] public EventCallback<long> OnSaved { get; set; }
+    private readonly SearchDefinition _definition = new();
+    private bool _isSaving;
+    private long? _savedId;
+    private string? _error;
+    private bool _isAnyAge;
+    private int? _previousYearFrom;
+    private int? _previousYearTo;
+
+    private void UpdateYearFilter()
+    {
+        if (_isAnyAge)
+        {
+            _previousYearFrom = _definition.YearFrom;
+            _previousYearTo = _definition.YearTo;
+            _definition.YearFrom = null;
+            _definition.YearTo = null;
+        }
+        else
+        {
+            _definition.YearFrom = _previousYearFrom;
+            _definition.YearTo = _previousYearTo;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _isSaving = true;
+        _error = null;
+        try
+        {
+            _savedId = Repository.Create(_definition);
+            await OnSaved.InvokeAsync(_savedId.Value);
+        }
+        catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or System.ComponentModel.DataAnnotations.ValidationException)
+        {
+            _error = $"Could not save the search: {exception.Message}";
+        }
+        finally { _isSaving = false; }
+    }
+}

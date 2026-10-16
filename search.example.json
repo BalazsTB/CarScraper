@@ -1,0 +1,16 @@
+{
+  "criteria": {
+    "postcode": "LS1 2AD",
+    "radius": 20,
+    "year_from": 2010,
+    "year_to": 2014,
+    "price_from": 3000,
+    "price_to": 6500
+  },
+  "cars": [
+    {"make": "Toyota", "model": "Yaris"},
+    {"make": "Honda", "model": "Jazz"},
+    {"make": "Suzuki", "model": "Swift"},
+    {"make": "Mazda", "model": "Mazda2"}
+  ]
+}

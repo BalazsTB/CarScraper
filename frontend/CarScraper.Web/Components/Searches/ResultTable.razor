@@ -1,0 +1,55 @@
+<h3>Results</h3>
+@if (Listings.Count == 0)
+{
+    <div class="empty">@(IsActive ? "Waiting for the first listings…" : "No listings collected for this search.")</div>
+}
+else
+{
+    <div class="filters">
+        <label>Name or location<input @bind="_query" @bind:event="oninput" placeholder="Filter results" /></label>
+        <label>Fuel<select @bind="_fuel"><option value="">All fuels</option>@foreach (var fuel in Listings.Select(item => item.Fuel).Where(value => value is not null).Distinct().Order()) { <option>@fuel</option> }</select></label>
+        <label>Transmission<select @bind="_transmission"><option value="">All types</option>@foreach (var transmission in Listings.Select(item => item.Transmission).Where(value => value is not null).Distinct().Order()) { <option>@transmission</option> }</select></label>
+        <label>Sort by<select @bind="_sort"><option value="distance">Nearest</option><option value="price">Lowest price</option><option value="year">Newest year</option><option value="mileage">Lowest mileage</option></select></label>
+    </div>
+    <p class="small muted">Showing @Filtered.Count() of @Listings.Count listings</p>
+    <div class="table-scroll"><table>
+        <thead><tr><th>Car</th><th>Price</th><th>Year</th><th>Mileage</th><th>Distance</th><th>Location</th><th>Fuel</th><th>Transmission</th><th>Engine</th><th>Owners</th><th>Miles/year</th></tr></thead>
+        <tbody>@foreach (var listing in Filtered)
+        {
+            <tr><td>@if (IsAdvertLink(listing.Link)) { <a href="@listing.Link" target="_blank" rel="noopener noreferrer">@listing.Name ↗</a> } else { @listing.Name }</td>
+                <td class="price">@listing.Price?.ToString("C0", System.Globalization.CultureInfo.GetCultureInfo("en-GB"))</td>
+                <td>@listing.Year</td><td>@listing.Mileage?.ToString("N0")</td><td>@listing.Distance?.ToString("0.#") mi</td>
+                <td>@listing.Location</td><td>@listing.Fuel</td><td>@listing.Transmission</td><td>@listing.Engine</td><td>@listing.Owners</td><td>@listing.MilesPerYear?.ToString("N0")</td></tr>
+        }</tbody>
+    </table></div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<Listing> Listings { get; set; } = [];
+    [Parameter] public bool IsActive { get; set; }
+    private string _query = "";
+    private string _fuel = "";
+    private string _transmission = "";
+    private string _sort = "distance";
+
+    private IEnumerable<Listing> Filtered
+    {
+        get
+        {
+            var filtered = Listings.Where(listing =>
+                ($"{listing.Name} {listing.Location}").Contains(_query, StringComparison.OrdinalIgnoreCase)
+                && (_fuel == "" || listing.Fuel == _fuel)
+                && (_transmission == "" || listing.Transmission == _transmission));
+            return _sort switch
+            {
+                "price" => filtered.OrderBy(item => item.Price is null).ThenBy(item => item.Price),
+                "year" => filtered.OrderBy(item => item.Year is null).ThenByDescending(item => item.Year),
+                "mileage" => filtered.OrderBy(item => item.Mileage is null).ThenBy(item => item.Mileage),
+                _ => filtered.OrderBy(item => item.Distance is null).ThenBy(item => item.Distance)
+            };
+        }
+    }
+
+    private static bool IsAdvertLink(string value) => Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && uri.Scheme == "https" && uri.Host == "www.autotrader.co.uk";
+}

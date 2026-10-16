@@ -1,0 +1,5 @@
+ALTER TABLE searches ADD COLUMN created_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE searches ADD COLUMN status TEXT NOT NULL DEFAULT 'completed';
+ALTER TABLE searches ADD COLUMN headless INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE searches ADD COLUMN error_message TEXT;
+ALTER TABLE searches ADD COLUMN progress_message TEXT;

@@ -1,0 +1,21 @@
+﻿@page "/"
+
+<PageTitle>Car search</PageTitle>
+
+<header class="page-header">
+    <span class="eyebrow">YOUR NEXT CAR</span>
+    <h1>Find a car worth a closer look.</h1>
+    <p>Save your search, compare listings, and keep every search in one place.</p>
+</header>
+<div class="workspace">
+    <section class="panel"><SearchForm OnSaved="SearchSaved" /></section>
+    <section class="panel"><SearchHistory @ref="_history" /></section>
+</div>
+
+@code {
+    private SearchHistory? _history;
+    private async Task SearchSaved(long searchId)
+    {
+        if (_history is not null) await _history.SelectAsync(searchId);
+    }
+}
