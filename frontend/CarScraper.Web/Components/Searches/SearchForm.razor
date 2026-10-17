@@ -1,8 +1,9 @@
 @inject CarScraper.Web.Data.ISearchRepository Repository
+@inject CarScraper.Web.Services.SearchQueue Queue
 
-<h2>Create a search</h2>
-<p class="muted">Save the criteria first. Start the search when you are ready.</p>
-<EditForm Model="_definition" OnValidSubmit="SaveAsync" FormName="new-search">
+<h2>Search criteria</h2>
+<p class="muted">Enter a postcode and at least one make and model. Optional limits can stay blank.</p>
+<EditForm Model="_definition" OnValidSubmit="SaveAsync" FormName="new-search" autocomplete="off">
     <DataAnnotationsValidator />
     <ValidationSummary />
     <div class="form-grid">
@@ -24,13 +25,13 @@
     @foreach (var car in _definition.Cars)
     {
         <div class="car-row" @key="car">
-            <label>Make<InputText @bind-Value="car.Make" /></label>
+            <BrandCombobox Brands="_brands" @bind-Value="car.Make" />
             <label>Model<InputText @bind-Value="car.Model" /></label>
             <button type="button" class="secondary remove" @onclick="() => _definition.Cars.Remove(car)" aria-label="Remove car">Remove</button>
         </div>
     }
     <button type="button" class="secondary" @onclick="() => _definition.Cars.Add(new())">+ Add a car</button>
-    <details>
+    <details open>
         <summary>Search options</summary>
         <div class="form-grid">
             <label>Pages per make/model<InputNumber @bind-Value="_definition.MaxPages" /></label>
@@ -39,23 +40,22 @@
         <label class="checkbox"><InputCheckbox @bind-Value="_definition.IsHeadless" /> Run Chrome in the background</label>
         <p class="muted small">Leave unchecked to handle cookie consent in Chrome.</p>
     </details>
-    <button type="submit" disabled="@(_isSaving || !RendererInfo.IsInteractive)">Save search</button>
+    <button type="submit" disabled="@(_isSaving || !RendererInfo.IsInteractive)">@(_isSaving ? "Starting search…" : "Start search")</button>
 </EditForm>
-@if (_savedId is not null)
-{
-    <p class="success" role="status">Search #@_savedId saved. Select Search in your history to start it.</p>
-}
 @if (_error is not null) { <p class="error" role="alert">@_error</p> }
 
 @code {
     [Parameter] public EventCallback<long> OnSaved { get; set; }
     private readonly SearchDefinition _definition = new();
+    private List<string> _brands = [];
     private bool _isSaving;
     private long? _savedId;
     private string? _error;
     private bool _isAnyAge;
     private int? _previousYearFrom;
     private int? _previousYearTo;
+
+    protected override void OnInitialized() => _brands = Repository.GetCarBrands();
 
     private void UpdateYearFilter()
     {
@@ -75,11 +75,13 @@
 
     private async Task SaveAsync()
     {
+        if (_isSaving) return;
         _isSaving = true;
         _error = null;
         try
         {
-            _savedId = Repository.Create(_definition);
+            _savedId ??= Repository.Create(_definition);
+            Queue.Start(_savedId.Value);
             await OnSaved.InvokeAsync(_savedId.Value);
         }
         catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or System.ComponentModel.DataAnnotations.ValidationException)

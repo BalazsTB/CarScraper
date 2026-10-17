@@ -1,0 +1,129 @@
+@page "/searches/{SearchId:long}"
+@implements IAsyncDisposable
+@inject CarScraper.Web.Data.ISearchRepository Repository
+@inject CarScraper.Web.Services.SearchQueue Queue
+@inject ILogger<SearchResults> Logger
+@inject NavigationManager Navigation
+
+<PageTitle>@(_search?.IsActive == true ? "Searching" : "Search results") · CarScraper</PageTitle>
+@if (_error is not null)
+{
+    <h1>We couldn’t load this search.</h1>
+    <p class="error" role="alert">@_error</p>
+    <button class="secondary" @onclick="Refresh">Try again</button>
+}
+else if (_search is null)
+{
+    <h1>Search not found.</h1><p>This search is no longer available.</p>
+    <a href="/searches">Back to previous searches</a>
+}
+else
+{
+    <header class="page-header">
+        <a class="back-link" href="/searches">← Previous searches</a>
+        <span class="eyebrow">SEARCH #@_search.Id</span>
+        <h1>@(_search.IsActive ? "Finding your next car." : _search.Status == "draft" ? "Ready when you are." : "Your search results.")</h1>
+        <p>@_search.Description · @_search.Definition.Postcode</p>
+    </header>
+    <SearchSteps Current="@(_search.IsActive ? 2 : _search.Status == "draft" ? 1 : 3)" />
+    @if (_search.IsActive)
+    {
+        <section class="panel loading-panel" aria-busy="true" aria-label="Search in progress">
+            <div class="loading-spinner" aria-hidden="true"></div>
+            <h2>@(_search.Status == "queued" ? "Your search is in the queue" : "Collecting listings")</h2>
+            <div role="status" aria-live="polite">
+                <p>@_search.ProgressMessage</p>
+                <p class="loading-count"><strong>@_search.ResultCount</strong> listings collected</p>
+            </div>
+            <p class="muted">Your results will appear here when the search finishes.</p>
+            <p class="small muted">You can visit another page and return from Previous searches. Keep the app server running.</p>
+        </section>
+    }
+    else
+    {
+        <section class="panel">
+            <div class="section-heading">
+                <div><span class="badge @_search.Status">@_search.Status</span><p><strong>@_search.ResultCount</strong> listings collected</p></div>
+                <div class="search-actions">
+                    <button disabled="@(_isStarting || !_search.CanStart || !RendererInfo.IsInteractive)" @onclick="StartSearch">@(_search.Status == "draft" ? "Start search" : _search.Status == "failed" ? "Retry search" : "Search again")</button>
+                    <DeleteSearchButton @key="SearchId" Search="_search" OnDeleted="SearchDeleted" />
+                </div>
+            </div>
+            @if (_actionError is not null) { <p class="error" role="alert">@_actionError</p> }
+            @if (_search.Status == "failed")
+            {
+                <p class="error" role="alert">@_search.ErrorMessage</p>
+                <p class="muted">The search stopped early. Any listings collected so far are shown below.</p>
+            }
+            <details>
+                <summary>Search criteria</summary>
+                <p>Location: @_search.Definition.Postcode · @(_search.Definition.Radius?.ToString() ?? "Any distance")@(_search.Definition.Radius is null ? "" : " miles")</p>
+                <p>Price: @Money(_search.Definition.PriceFrom) to @Money(_search.Definition.PriceTo) · Year: @(_search.Definition.YearFrom?.ToString() ?? "Any")–@(_search.Definition.YearTo?.ToString() ?? "Any")</p>
+                <p>@_search.Definition.MaxPages pages per make/model · @_search.Definition.DelaySeconds seconds between pages</p>
+            </details>
+            @if (_search.Status != "draft") { <ResultTable @key="SearchId" Listings="_results" /> }
+        </section>
+    }
+}
+
+@code {
+    [Parameter] public long SearchId { get; set; }
+    private SearchRecord? _search;
+    private List<Listing> _results = [];
+    private string? _error;
+    private string? _actionError;
+    private bool _isStarting;
+    private void SearchDeleted() => Navigation.NavigateTo("/searches");
+    private readonly CancellationTokenSource _cancellation = new();
+    private Task? _polling;
+    protected override void OnParametersSet() { _actionError = null; Refresh(); }
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) _polling = PollAsync(_cancellation.Token);
+        return Task.CompletedTask;
+    }
+    private void Refresh()
+    {
+        try
+        {
+            _search = Repository.Get(SearchId);
+            _results = _search is null || _search.IsActive ? [] : Repository.GetResults(SearchId);
+            _error = null;
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException exception)
+        {
+            Logger.LogError(exception, "Could not load search {SearchId}", SearchId);
+            _error = "Could not read this search. Please try again.";
+        }
+    }
+    private void StartSearch()
+    {
+        if (_isStarting || _search?.CanStart != true) return;
+        _isStarting = true;
+        _actionError = null;
+        try { Queue.Start(SearchId); Refresh(); }
+        catch (Microsoft.Data.Sqlite.SqliteException exception)
+        {
+            Logger.LogError(exception, "Could not queue search {SearchId}", SearchId);
+            _actionError = "Could not start the search. Please try again.";
+        }
+        finally { _isStarting = false; }
+    }
+    private async Task PollAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+                await InvokeAsync(() => { Refresh(); StateHasChanged(); });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+    private static string Money(int? value) => value?.ToString("C0", System.Globalization.CultureInfo.GetCultureInfo("en-GB")) ?? "Any";
+    public async ValueTask DisposeAsync()
+    {
+        await _cancellation.CancelAsync();
+        if (_polling is not null) await _polling;
+        _cancellation.Dispose();
+    }
+}

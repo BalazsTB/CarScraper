@@ -6,6 +6,17 @@ namespace CarScraper.Web.Data;
 
 public sealed partial class SearchRepository
 {
+    public List<string> GetCarBrands()
+    {
+        using var connection = factory.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT brand_name FROM car_brands ORDER BY brand_name COLLATE NOCASE";
+        using var reader = command.ExecuteReader();
+        var brands = new List<string>();
+        while (reader.Read()) brands.Add(reader.GetString(0));
+        return brands;
+    }
+
     public List<SearchRecord> GetAll() => ReadSearches(null);
     public SearchRecord? Get(long searchId) => ReadSearches(searchId).FirstOrDefault();
 

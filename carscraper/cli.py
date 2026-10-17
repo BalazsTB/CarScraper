@@ -7,7 +7,6 @@ from pathlib import Path
 import sqlite3
 
 from carscraper.config import load_config
-from carscraper.exports.excel import export_excel
 from carscraper.scraping.browser import scrape
 from carscraper.scraping.urls import search_url
 from carscraper.storage.repository import save_search
@@ -17,10 +16,9 @@ LOG = logging.getLogger(__name__)
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Save AutoTrader UK searches to SQLite and Excel."
+        description="Save AutoTrader UK searches to SQLite."
     )
     parser.add_argument("--config", type=Path, default=Path("search.json"))
-    parser.add_argument("--output", type=Path, default=Path("cars.xlsx"))
     parser.add_argument("--database", type=Path, default=Path("cars.sqlite3"))
     parser.add_argument(
         "--max-pages", type=int, default=10, help="Maximum pages per make/model"
@@ -57,7 +55,5 @@ def main():
             len(rows),
             args.database,
         )
-        export_excel(rows, args.output)
-        LOG.info("Saved %s unique listings to %s", len(rows), args.output)
     except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
         parser.exit(1, f"Error: {exc}\n")

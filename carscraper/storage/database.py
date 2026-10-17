@@ -21,6 +21,8 @@ def initialize_database(path):
         connection.execute("PRAGMA journal_mode = WAL")
         connection.executescript(
             (SCHEMA_DIRECTORY / "schema.sql").read_text(encoding="utf-8")
+            + "\n"
+            + (SCHEMA_DIRECTORY / "car_brands.sql").read_text(encoding="utf-8")
         )
         with connection:
             columns = {

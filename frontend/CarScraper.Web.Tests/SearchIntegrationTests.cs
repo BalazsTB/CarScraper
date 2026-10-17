@@ -11,6 +11,13 @@ namespace CarScraper.Web.Tests;
 
 public sealed class SearchIntegrationTests : IDisposable
 {
+    private static SearchDefinition ValidDefinition() => new()
+    {
+        Postcode = "LS1 2AD", MaxPages = 10, DelaySeconds = 5,
+        YearFrom = 2010, YearTo = 2014,
+        Cars = [new() { Make = "Toyota", Model = "Yaris" }]
+    };
+
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "carscraper-test-" + Guid.NewGuid());
     private readonly ScraperOptions _options;
     private readonly DatabaseConnectionFactory _factory;
@@ -28,9 +35,24 @@ public sealed class SearchIntegrationTests : IDisposable
     }
 
     [Fact]
+    public void BrandsAreSeededOnceAndReturnedAlphabetically()
+    {
+        var brands = _repository.GetCarBrands();
+        Assert.Equal(151, brands.Count);
+        Assert.Equal(brands.OrderBy(brand => brand, StringComparer.OrdinalIgnoreCase), brands);
+        Assert.Equal("Abarth", brands[0]);
+        Assert.Equal("XPENG", brands[^1]);
+        Assert.Contains("DS AUTOMOBILES", brands);
+        Assert.Contains("Mills Extreme Vehicles (MEV)", brands);
+        Assert.DoesNotContain(brands, brand => brand.Contains("logo", StringComparison.OrdinalIgnoreCase));
+        new DatabaseInitializer(_factory, _options).Initialize();
+        Assert.Equal(brands, _repository.GetCarBrands());
+    }
+
+    [Fact]
     public void SaveAndQueueUseOneSearchAndRejectDuplicateStarts()
     {
-        var searchId = _repository.Create(new SearchDefinition());
+        var searchId = _repository.Create(ValidDefinition());
         Assert.Equal("draft", _repository.Get(searchId)!.Status);
         var queue = new SearchQueue(_repository);
         Assert.True(queue.Start(searchId));
@@ -44,7 +66,11 @@ public sealed class SearchIntegrationTests : IDisposable
     [InlineData(true)]
     public async Task PythonReadsDotNetSearchAndWritesLinkedResults(bool isAnyAge)
     {
-        var definition = new SearchDefinition { Postcode = "SW1A 1AA", PriceTo = 9000, MaxPages = 1, IsHeadless = true };
+        var definition = ValidDefinition();
+        definition.Postcode = "SW1A 1AA";
+        definition.PriceTo = 9000;
+        definition.MaxPages = 1;
+        definition.IsHeadless = true;
         if (isAnyAge)
         {
             definition.YearFrom = null;
@@ -89,7 +115,7 @@ public sealed class SearchIntegrationTests : IDisposable
     [Fact]
     public async Task RealRunnerPassesSearchIdAndReportsPythonFailure()
     {
-        var searchId = _repository.Create(new SearchDefinition());
+        var searchId = _repository.Create(ValidDefinition());
         using (var connection = _factory.Open())
         using (var command = connection.CreateCommand())
         {
@@ -109,8 +135,58 @@ public sealed class SearchIntegrationTests : IDisposable
     [Fact]
     public void InvalidSearchCannotBeSaved()
     {
-        Assert.Throws<System.ComponentModel.DataAnnotations.ValidationException>(() => _repository.Create(new SearchDefinition { PriceFrom = 10000, PriceTo = 1 }));
+        var definition = ValidDefinition();
+        definition.PriceFrom = 10000;
+        definition.PriceTo = 1;
+        Assert.Throws<System.ComponentModel.DataAnnotations.ValidationException>(() => _repository.Create(definition));
         Assert.Empty(_repository.GetAll());
+    }
+
+    [Theory]
+    [InlineData("draft")]
+    [InlineData("completed")]
+    [InlineData("failed")]
+    public void DeleteRemovesOnlySelectedSearchAndItsResults(string status)
+    {
+        var selectedId = _repository.Create(ValidDefinition());
+        var otherId = _repository.Create(ValidDefinition());
+        using (var connection = _factory.Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                UPDATE searches SET status=$status WHERE id=$id;
+                INSERT INTO search_results (search_id, link) VALUES ($id, 'selected'), ($other, 'other');
+                """;
+            command.Parameters.AddWithValue("$status", status);
+            command.Parameters.AddWithValue("$id", selectedId);
+            command.Parameters.AddWithValue("$other", otherId);
+            command.ExecuteNonQuery();
+        }
+        Assert.True(_repository.TryDelete(selectedId));
+        Assert.Null(_repository.Get(selectedId));
+        Assert.Empty(_repository.GetResults(selectedId));
+        Assert.NotNull(_repository.Get(otherId));
+        Assert.Single(_repository.GetResults(otherId));
+        Assert.False(_repository.TryDelete(selectedId));
+        Assert.Equal(151, _repository.GetCarBrands().Count);
+    }
+
+    [Theory]
+    [InlineData("queued")]
+    [InlineData("running")]
+    public void ActiveSearchCannotBeDeleted(string status)
+    {
+        var id = _repository.Create(ValidDefinition());
+        using (var connection = _factory.Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "UPDATE searches SET status=$status WHERE id=$id";
+            command.Parameters.AddWithValue("$status", status);
+            command.Parameters.AddWithValue("$id", id);
+            command.ExecuteNonQuery();
+        }
+        Assert.False(_repository.TryDelete(id));
+        Assert.Equal(status, _repository.Get(id)!.Status);
     }
 
     public void Dispose()

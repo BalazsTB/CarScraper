@@ -1,6 +1,16 @@
 ﻿@inherits LayoutComponentBase
 
-<main>@Body</main>
+<div class="app-shell">
+    <aside class="sidebar">
+        <a class="app-brand" href="/">CarScraper<span>Find your next car</span></a>
+        <nav aria-label="Main navigation">
+            <NavLink href="/search/new" Match="NavLinkMatch.All"><span aria-hidden="true">＋</span> New search</NavLink>
+            <NavLink href="/searches"><span aria-hidden="true">≡</span> Previous searches</NavLink>
+        </nav>
+        <p class="sidebar-note">Your searches, all in one place.</p>
+    </aside>
+    <main>@Body</main>
+</div>
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.

@@ -28,6 +28,8 @@ public sealed class DatabaseInitializer(DatabaseConnectionFactory factory, Scrap
             command.CommandText = statement;
             command.ExecuteNonQuery();
         }
+        command.CommandText = File.ReadAllText(Path.Combine(schemaDirectory, "car_brands.sql"));
+        command.ExecuteNonQuery();
         transaction.Commit();
     }
 }

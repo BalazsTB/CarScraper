@@ -1,0 +1,93 @@
+@inherits InputBase<string>
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="brand-combobox">
+    <label for="@_id">Make</label>
+    <input id="@_id" @ref="_input" class="@CssClass" value="@CurrentValueAsString"
+           placeholder="Search brands" autocomplete="off" role="combobox"
+           aria-autocomplete="list" aria-expanded="@(_open ? "true" : "false")"
+           aria-controls="@(_id + "-options")" aria-activedescendant="@ActiveOptionId"
+           @oninput="Filter" @onfocus="Open" @onblur="Close" @onkeydown="HandleKey" />
+    @if (_open)
+    {
+        var matches = Matches;
+        <ul id="@(_id + "-options")" class="brand-options" role="listbox" aria-label="Car brands">
+            @for (var index = 0; index < matches.Count; index++)
+            {
+                var brand = matches[index];
+                <li id="@(_id + "-option-" + index)" role="option"
+                    aria-selected="@(index == _active ? "true" : "false")"
+                    @onmousedown:preventDefault @onclick="() => Select(brand)">@brand</li>
+            }
+            @if (matches.Count == 0)
+            {
+                <li class="muted" role="presentation">No matching brands</li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<string> Brands { get; set; } = [];
+    private readonly string _id = "brand-" + Guid.NewGuid().ToString("N");
+    private ElementReference _input;
+    private IJSObjectReference? _module;
+    private bool _open;
+    private int _active = -1;
+    private List<string> Matches => Brands.Where(brand => brand.Contains(
+        CurrentValueAsString?.Trim() ?? "", StringComparison.OrdinalIgnoreCase)).ToList();
+    private string? ActiveOptionId => _open && _active >= 0 ? $"{_id}-option-{_active}" : null;
+
+    private void Open() => _open = true;
+    private void Close() { _open = false; _active = -1; }
+    private void Filter(ChangeEventArgs args)
+    {
+        CurrentValueAsString = args.Value?.ToString() ?? "";
+        _open = true;
+        _active = -1;
+    }
+    private void Select(string brand)
+    {
+        CurrentValueAsString = brand;
+        Close();
+    }
+    private void HandleKey(KeyboardEventArgs args)
+    {
+        var matches = Matches;
+        if (args.Key is "ArrowDown" or "ArrowUp")
+        {
+            _open = true;
+            if (matches.Count > 0)
+                _active = args.Key == "ArrowDown" ? (_active + 1) % matches.Count
+                    : (_active <= 0 ? matches.Count - 1 : _active - 1);
+        }
+        else if (args.Key == "Enter" && _open && _active >= 0 && _active < matches.Count)
+            Select(matches[_active]);
+        else if (args.Key == "Escape") Close();
+    }
+    protected override bool TryParseValueFromString(string? value, out string result,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(false)] out string? validationErrorMessage)
+    {
+        result = value ?? "";
+        validationErrorMessage = null;
+        return true;
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Searches/BrandCombobox.razor.js");
+            await _module.InvokeVoidAsync("attach", _input);
+        }
+        if (_module is not null && ActiveOptionId is not null)
+            await _module.InvokeVoidAsync("scrollActive", _input);
+    }
+    public async ValueTask DisposeAsync()
+    {
+        ((IDisposable)this).Dispose();
+        if (_module is null) return;
+        try { await _module.DisposeAsync(); }
+        catch (JSDisconnectedException) { }
+    }
+}

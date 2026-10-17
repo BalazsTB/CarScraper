@@ -24,32 +24,43 @@ The Blazor server and Python worker run on the same computer. Run one app instan
 
 ## Create and run a search
 
-1. Enter a postcode, filters, and one or more make/model pairs.
+1. Choose **New search** from the sidebar or landing page. The form starts blank.
+2. Enter a postcode, filters, one or more make/model pairs, a page count, and a delay.
+   Type in the make field to narrow the alphabetical brand list, then click a brand or use the arrow keys and Enter.
    Select **Any age** to ignore both year limits. Uncheck it to restore the previous year range.
-2. Select **Save search**. Blazor writes a draft to SQLite and selects it in the history.
-3. Select **Search**. The saved search enters the queue.
-4. Watch the status and results. Blazor reads SQLite every two seconds.
+3. Select **Start search**. Blazor saves and queues the search, then opens its loading screen.
+4. Watch its progress and collected listing count. The screen switches to results automatically when the search finishes.
+
+Choose **Previous searches** for an open list of saved searches with their essential criteria, status, and result count.
+Selecting an entry opens the same results page used by the new-search workflow. Active searches show their loading screen.
+You can refresh or return to a search by URL without starting another run. Status updates every two seconds.
+Use **Delete search** in the history list or results page to remove a search and its saved listings after confirmation.
+Queued and running searches must finish before they can be deleted.
 
 The server runs one Python search at a time. You can save other searches while it runs.
+For each make/model, the scraper navigates to page 1, parses and saves its results,
+then navigates to page 2 and continues through the requested page count. Each page
+loads separately in the same Chrome session, with the configured delay between navigations.
+Missing Next links, repeated adverts, and empty result pages do not shorten the requested run.
 Leave background Chrome unchecked to handle cookie consent in the Chrome window.
 Closing the browser tab does not stop a search. The Blazor server must remain running.
-The UI has no Excel download and does not create spreadsheets.
 
 Filter collected results by name/location, fuel, or transmission. Sort by distance, price, year, or mileage.
 Advert links open in a separate tab. Unknown listing fields remain blank.
 
 **Search again** reuses the saved criteria and primary key. The worker clears that search's previous results when it starts.
 Create a new search when you want to preserve an earlier snapshot.
-If a search fails, its collected results remain visible as partial results. Select **Search again** to retry.
+If a search fails, its collected results remain visible as partial results. Select **Retry search** to try again.
 
 ## Database contract
 
-There are two tables:
+There are three tables:
 
 | Table | Purpose |
 | --- | --- |
 | `searches` | Criteria, make/model JSON, options, timestamps, progress, errors, and run status. Primary key: `id`. |
 | `search_results` | Collected listing fields. `search_id` references `searches.id`. Advert links are unique within a search. |
+| `car_brands` | Brand names for the searchable make field, returned in alphabetical order. |
 
 The lifecycle is `draft → queued → running → completed` or `failed`.
 Blazor saves and queues the search. Python claims a queued search before opening Chrome.
@@ -65,6 +76,7 @@ This command requires an existing **queued** search. Python reads all search par
 It commits each collected page and updates the existing search status. It never creates a second search record.
 
 Both runtimes use the same schema and additive migration files in `carscraper/storage/`.
+They also seed the 151-brand catalog from `car_brands.sql` without duplicating existing names.
 Existing searches retain their IDs and results. The migration marks earlier searches as completed.
 SQLite uses write-ahead logging and a 30-second lock timeout to support polling during writes.
 
@@ -113,7 +125,6 @@ carscraper/
     repository.py              Existing command-line history persistence
     search_run.py              Claiming, incremental results, and completion
   jobs/worker.py               Run a saved search by ID
-  exports/excel.py             Optional standalone CLI export
   cli.py                       Standalone CLI
 tests/                         Python tests
 Database/cars.sqlite3           Shared local database
@@ -132,7 +143,7 @@ Copy-Item search.example.json search.json
 .\.venv\Scripts\python.exe autotrader_scraper.py --database Database/cars.sqlite3 --max-pages 1
 ```
 
-Edit `search.json` before running. This standalone command creates a completed search snapshot and an Excel workbook.
+Edit `search.json` before running. This standalone command saves a completed search snapshot to SQLite.
 It does not use the Blazor queue. The example JSON does not control the Blazor form.
 
 ## Verification
@@ -152,7 +163,7 @@ After building the web app, an optional headless Chrome check tests saving and s
 .\.venv\Scripts\python.exe tests/blazor_ui_smoke.py
 ```
 
-This check uses a temporary database and forces a validation failure before contacting AutoTrader.
+This check uses a temporary database and synthetic listings to verify the full workflow and a validation failure without contacting AutoTrader.
 
 The scraper stops on unrecognized result pages and saves diagnostic HTML under `debug/`.
 Check the server log and the search error for consent screens, access challenges, or changed markup.

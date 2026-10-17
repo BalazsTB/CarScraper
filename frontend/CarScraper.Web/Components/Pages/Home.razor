@@ -1,21 +1,22 @@
-﻿@page "/"
+@page "/"
 
-<PageTitle>Car search</PageTitle>
-
-<header class="page-header">
+<PageTitle>CarScraper</PageTitle>
+<header class="page-header landing-header">
     <span class="eyebrow">YOUR NEXT CAR</span>
-    <h1>Find a car worth a closer look.</h1>
-    <p>Save your search, compare listings, and keep every search in one place.</p>
+    <h1>Where would you like to start?</h1>
+    <p>Find something new, or take another look at your saved results.</p>
 </header>
-<div class="workspace">
-    <section class="panel"><SearchForm OnSaved="SearchSaved" /></section>
-    <section class="panel"><SearchHistory @ref="_history" /></section>
+<div class="landing-options">
+    <a class="landing-card" href="/search/new">
+        <span class="choice-icon" aria-hidden="true">＋</span>
+        <h2>Start a new search</h2>
+        <p>Choose your cars and criteria. We’ll collect the listings for you.</p>
+        <span class="choice-action">Create a search <span aria-hidden="true">→</span></span>
+    </a>
+    <a class="landing-card" href="/searches">
+        <span class="choice-icon" aria-hidden="true">≡</span>
+        <h2>View previous searches</h2>
+        <p>Return to a saved search and compare the cars you found.</p>
+        <span class="choice-action">Browse your searches <span aria-hidden="true">→</span></span>
+    </a>
 </div>
-
-@code {
-    private SearchHistory? _history;
-    private async Task SearchSaved(long searchId)
-    {
-        if (_history is not null) await _history.SelectAsync(searchId);
-    }
-}

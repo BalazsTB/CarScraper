@@ -1,0 +1,38 @@
+@inject CarScraper.Web.Data.ISearchRepository Repository
+@inject IJSRuntime JS
+@inject ILogger<DeleteSearchButton> Logger
+
+<div class="delete-search-action">
+    <button type="button" class="secondary danger" aria-label="Delete search #@Search.Id"
+            disabled="@(_isDeleting || Search.IsActive || !RendererInfo.IsInteractive)"
+            title="@(Search.IsActive ? "Wait for this search to finish before deleting it." : "Delete this search and its saved listings")"
+            @onclick="DeleteAsync">@(_isDeleting ? "Deleting…" : "Delete search")</button>
+    @if (_error is not null) { <p class="error small" role="alert">@_error</p> }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SearchRecord Search { get; set; } = default!;
+    [Parameter] public EventCallback OnDeleted { get; set; }
+    private bool _isDeleting;
+    private string? _error;
+
+    private async Task DeleteAsync()
+    {
+        if (_isDeleting || Search.IsActive) return;
+        _isDeleting = true;
+        _error = null;
+        var searchId = Search.Id;
+        try
+        {
+            if (!await JS.InvokeAsync<bool>("confirm", $"Delete search #{searchId} ({Search.Description}) and all its saved listings? This cannot be undone.")) return;
+            if (Repository.TryDelete(searchId)) await OnDeleted.InvokeAsync();
+            else _error = "This search is running, queued, or already deleted. Refresh to see its current status.";
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException exception)
+        {
+            Logger.LogError(exception, "Could not delete search {SearchId}", searchId);
+            _error = "Could not delete this search. Please try again.";
+        }
+        finally { _isDeleting = false; }
+    }
+}

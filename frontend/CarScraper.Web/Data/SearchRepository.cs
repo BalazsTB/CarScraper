@@ -34,6 +34,17 @@ public sealed partial class SearchRepository(DatabaseConnectionFactory factory) 
         return (long)command.ExecuteScalar()!;
     }
 
+    public bool TryDelete(long searchId)
+    {
+        using var connection = factory.Open();
+        using var command = connection.CreateCommand();
+        // The status condition is part of the delete so a newly queued search cannot
+        // be removed while a worker is about to use it. Results cascade via the FK.
+        command.CommandText = "DELETE FROM searches WHERE id=$id AND status IN ('draft', 'completed', 'failed')";
+        command.Parameters.AddWithValue("$id", searchId);
+        return command.ExecuteNonQuery() == 1;
+    }
+
     public bool TryQueue(long searchId)
     {
         using var connection = factory.Open();

@@ -1,0 +1,11 @@
+<ol class="search-steps" aria-label="Search progress">
+    @for (var step = 1; step <= 3; step++)
+    {
+        <li class="@(step == Current ? "current" : step < Current ? "done" : "")" aria-current="@(step == Current ? "step" : null)">
+            <span>@step</span>@(step == 1 ? "Define search" : step == 2 ? "Collect listings" : "View results")
+        </li>
+    }
+</ol>
+@code {
+    [Parameter] public int Current { get; set; }
+}

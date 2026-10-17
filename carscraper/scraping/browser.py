@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 import time
 
-from carscraper.scraping.parsing import has_next_page, parse_listings
+from carscraper.scraping.parsing import parse_listings
 from carscraper.scraping.urls import search_url
 
 LOG = logging.getLogger(__name__)
@@ -14,6 +14,7 @@ LOG = logging.getLogger(__name__)
 def scrape(
     config, max_pages=10, delay=5, headless=False, debug_dir=Path("debug"), on_page=None
 ):
+    """Navigate to and parse pages 1 through max_pages for each make/model."""
     from selenium import webdriver
     from selenium.common.exceptions import TimeoutException
     from selenium.webdriver.support.ui import WebDriverWait
@@ -24,8 +25,10 @@ def scrape(
     rows, seen = [], set()
     with webdriver.Chrome(options=options) as driver:
         driver.set_page_load_timeout(60)
-        for car in config["cars"]:
+        for car_index, car in enumerate(config["cars"]):
             for page in range(1, max_pages + 1):
+                if car_index or page > 1:
+                    time.sleep(delay)
                 LOG.info("Searching %s %s, page %s", car["make"], car["model"], page)
                 driver.get(search_url(car, config["criteria"], page))
 
@@ -56,7 +59,7 @@ def scrape(
                         f"Results were not recognised. Inspect {destination}; the page may "
                         "show a consent dialog, access challenge, or changed markup."
                     ) from exc
-                parsed, soup = parse_listings(driver.page_source, car)
+                parsed, _ = parse_listings(driver.page_source, car)
                 added = 0
                 for row in parsed:
                     if row["link"] not in seen:
@@ -69,14 +72,4 @@ def scrape(
                         parsed,
                         f"{car['make']} {car['model']}, page {page}: {len(parsed)} listings",
                     )
-                if not has_next_page(soup) or not added:
-                    break
-                if page == max_pages:
-                    LOG.warning(
-                        "Page limit reached for %s %s; results may be incomplete",
-                        car["make"],
-                        car["model"],
-                    )
-                time.sleep(delay)
-            time.sleep(delay)
     return rows

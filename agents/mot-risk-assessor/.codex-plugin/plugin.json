@@ -1,0 +1,36 @@
+{
+  "interface": {
+    "displayName": "MOT Risk Assessor",
+    "shortDescription": "Score a used car's MOT risks",
+    "longDescription": "Assess a UK vehicle's real MOT records for recurring defects, safety concerns, likely UK garage bills and repair economics. Produces a 0–10 screening score and a cautious buying recommendation; does not claim an MOT check without evidence.",
+    "developerName": "Bobata",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive"
+    ],
+    "logo": "./assets/mot-risk-icon.png",
+    "composerIcon": "./assets/mot-risk-icon.png",
+    "defaultPrompt": [
+      "Assess this vehicle's MOT history and give me a condition score, costs and buying recommendation.",
+      "Review these MOT screenshots for recurring defects and repair risks.",
+      "Compare the likely MOT repair costs with the car's roadworthy market value."
+    ]
+  },
+  "name": "mot-risk-assessor",
+  "version": "1.1.0",
+  "description": "Evidence-led UK MOT risk screening using consistent fixed deductions and safety caps, with an optional weighted audit and separate repair economics.",
+  "author": {
+    "name": "Bobata",
+    "email": "balazs.t.bodi@gmail.com"
+  },
+  "keywords": [
+    "MOT",
+    "DVSA",
+    "used cars",
+    "UK cars",
+    "vehicle inspection",
+    "car buying",
+    "repair costs"
+  ],
+  "skills": "./skills"
+}

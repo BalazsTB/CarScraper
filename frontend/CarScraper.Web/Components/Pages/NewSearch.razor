@@ -1,0 +1,15 @@
+@page "/search/new"
+@inject NavigationManager Navigation
+
+<PageTitle>New search · CarScraper</PageTitle>
+<header class="page-header">
+    <span class="eyebrow">NEW SEARCH</span>
+    <h1>What are you looking for?</h1>
+    <p>Set your criteria, then start collecting listings.</p>
+</header>
+<SearchSteps Current="1" />
+<section class="panel search-form-panel"><SearchForm OnSaved="SearchStarted" /></section>
+
+@code {
+    private void SearchStarted(long searchId) => Navigation.NavigateTo($"/searches/{searchId}");
+}
